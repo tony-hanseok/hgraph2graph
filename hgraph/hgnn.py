@@ -1,11 +1,9 @@
-import torch
 import torch.nn as nn
-import rdkit.Chem as Chem
-import torch.nn.functional as F
-from hgraph.mol_graph import MolGraph
-from hgraph.encoder import HierMPNEncoder
+
 from hgraph.decoder import HierMPNDecoder
+from hgraph.encoder import HierMPNEncoder
 from hgraph.nnutils import *
+
 
 def make_cuda(tensors):
     tree_tensors, graph_tensors = tensors
@@ -14,19 +12,22 @@ def make_cuda(tensors):
     graph_tensors = [make_tensor(x).cuda().long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
     return tree_tensors, graph_tensors
 
+
 class HierGNN(nn.Module):
 
     def __init__(self, args):
         super(HierGNN, self).__init__()
-        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size, args.depthT, args.depthG, args.dropout)
-        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size, args.hidden_size, args.diterT, args.diterG, args.dropout, attention=True)
+        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.depthT, args.depthG, args.dropout)
+        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.hidden_size, args.diterT, args.diterG, args.dropout, attention=True)
         self.encoder.tie_embedding(self.decoder.hmpn)
 
     def encode(self, tensors):
         tree_tensors, graph_tensors = tensors
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
-        tree_vecs = stack_pad_tensor( [tree_vecs[st : st + le] for st,le in tree_tensors[-1]] )
-        graph_vecs = stack_pad_tensor( [graph_vecs[st : st + le] for st,le in graph_tensors[-1]] )
+        tree_vecs = stack_pad_tensor([tree_vecs[st: st + le] for st, le in tree_tensors[-1]])
+        graph_vecs = stack_pad_tensor([graph_vecs[st: st + le] for st, le in graph_tensors[-1]])
         return root_vecs, tree_vecs, graph_vecs
 
     def translate(self, tensors, num_decode, enum_root, greedy):
@@ -43,13 +44,14 @@ class HierGNN(nn.Module):
             tree_vecs = tree_vecs.unsqueeze(0).expand(num_decode, -1, -1)
             graph_vecs = graph_vecs.unsqueeze(0).expand(num_decode, -1, -1)
 
-        return self.decoder.decode( (root_vecs, tree_vecs, graph_vecs), greedy=greedy)
+        return self.decoder.decode((root_vecs, tree_vecs, graph_vecs), greedy=greedy)
 
     def forward(self, x_graphs, x_tensors, y_graphs, y_tensors, y_orders, beta):
         x_tensors = make_cuda(x_tensors)
         y_tensors = make_cuda(y_tensors)
         x_root_vecs, x_tree_vecs, x_graph_vecs = self.encode(x_tensors)
-        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors, y_orders)
+        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors,
+                                                    y_orders)
         return loss, 0, wacc, iacc, tacc, sacc
 
 
@@ -58,8 +60,10 @@ class HierVGNN(nn.Module):
     def __init__(self, args):
         super(HierVGNN, self).__init__()
         self.latent_size = args.latent_size
-        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size, args.depthT, args.depthG, args.dropout)
-        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size, args.hidden_size, args.diterT, args.diterG, args.dropout, attention=True)
+        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.depthT, args.depthG, args.dropout)
+        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.hidden_size, args.diterT, args.diterG, args.dropout, attention=True)
         self.encoder.tie_embedding(self.decoder.hmpn)
 
         self.T_mean = nn.Linear(args.hidden_size, args.latent_size)
@@ -67,14 +71,14 @@ class HierVGNN(nn.Module):
         self.G_mean = nn.Linear(args.hidden_size, args.latent_size)
         self.G_var = nn.Linear(args.hidden_size, args.latent_size)
 
-        self.W_tree = nn.Sequential( nn.Linear(args.hidden_size + args.latent_size, args.hidden_size), nn.ReLU() )
-        self.W_graph = nn.Sequential( nn.Linear(args.hidden_size + args.latent_size, args.hidden_size), nn.ReLU() )
+        self.W_tree = nn.Sequential(nn.Linear(args.hidden_size + args.latent_size, args.hidden_size), nn.ReLU())
+        self.W_graph = nn.Sequential(nn.Linear(args.hidden_size + args.latent_size, args.hidden_size), nn.ReLU())
 
     def encode(self, tensors):
         tree_tensors, graph_tensors = tensors
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
-        tree_vecs = stack_pad_tensor( [tree_vecs[st : st + le] for st,le in tree_tensors[-1]] )
-        graph_vecs = stack_pad_tensor( [graph_vecs[st : st + le] for st,le in graph_tensors[-1]] )
+        tree_vecs = stack_pad_tensor([tree_vecs[st: st + le] for st, le in tree_tensors[-1]])
+        graph_vecs = stack_pad_tensor([graph_vecs[st: st + le] for st, le in graph_tensors[-1]])
         return root_vecs, tree_vecs, graph_vecs
 
     def translate(self, tensors, num_decode, enum_root, greedy=True):
@@ -87,18 +91,18 @@ class HierVGNN(nn.Module):
             root_vecs = torch.cat([root_vecs] * repeat + [root_vecs[:modulo]], dim=0)
             tree_vecs = torch.cat([tree_vecs] * repeat + [tree_vecs[:modulo]], dim=0)
             graph_vecs = torch.cat([graph_vecs] * repeat + [graph_vecs[:modulo]], dim=0)
-        
+
         batch_size = len(root_vecs)
         z_tree = torch.randn(batch_size, 1, self.latent_size).expand(-1, tree_vecs.size(1), -1).cuda()
         z_graph = torch.randn(batch_size, 1, self.latent_size).expand(-1, graph_vecs.size(1), -1).cuda()
-        z_tree_vecs = self.W_tree( torch.cat([tree_vecs, z_tree], dim=-1) )
-        z_graph_vecs = self.W_graph( torch.cat([graph_vecs, z_graph], dim=-1) )
-        return self.decoder.decode( (root_vecs, z_tree_vecs, z_graph_vecs), greedy=greedy)
+        z_tree_vecs = self.W_tree(torch.cat([tree_vecs, z_tree], dim=-1))
+        z_graph_vecs = self.W_graph(torch.cat([graph_vecs, z_graph], dim=-1))
+        return self.decoder.decode((root_vecs, z_tree_vecs, z_graph_vecs), greedy=greedy)
 
     def rsample(self, z_vecs, W_mean, W_var):
         batch_size = z_vecs.size(0)
         z_mean = W_mean(z_vecs)
-        z_log_var = -torch.abs( W_var(z_vecs) )
+        z_log_var = -torch.abs(W_var(z_vecs))
         kl_loss = -0.5 * torch.sum(1.0 + z_log_var - z_mean * z_mean - torch.exp(z_log_var)) / batch_size
         epsilon = torch.randn_like(z_mean).cuda()
         z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon
@@ -118,28 +122,32 @@ class HierVGNN(nn.Module):
 
         diff_tree_vecs = diff_tree_vecs.unsqueeze(1).expand(-1, x_tree_vecs.size(1), -1)
         diff_graph_vecs = diff_graph_vecs.unsqueeze(1).expand(-1, x_graph_vecs.size(1), -1)
-        x_tree_vecs = self.W_tree( torch.cat([x_tree_vecs, diff_tree_vecs], dim=-1) )
-        x_graph_vecs = self.W_graph( torch.cat([x_graph_vecs, diff_graph_vecs], dim=-1) )
+        x_tree_vecs = self.W_tree(torch.cat([x_tree_vecs, diff_tree_vecs], dim=-1))
+        x_graph_vecs = self.W_graph(torch.cat([x_graph_vecs, diff_graph_vecs], dim=-1))
 
-        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors, y_orders)
+        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors,
+                                                    y_orders)
         return loss + beta * kl_div, kl_div.item(), wacc, iacc, tacc, sacc
+
 
 class HierCondVGNN(HierVGNN):
 
     def __init__(self, args):
         super(HierCondVGNN, self).__init__(args)
-        self.W_tree = nn.Sequential( nn.Linear(args.hidden_size + args.latent_size + args.cond_size, args.hidden_size), nn.ReLU() )
-        self.W_graph = nn.Sequential( nn.Linear(args.hidden_size + args.latent_size + args.cond_size, args.hidden_size), nn.ReLU() )
+        self.W_tree = nn.Sequential(nn.Linear(args.hidden_size + args.latent_size + args.cond_size, args.hidden_size),
+                                    nn.ReLU())
+        self.W_graph = nn.Sequential(nn.Linear(args.hidden_size + args.latent_size + args.cond_size, args.hidden_size),
+                                     nn.ReLU())
 
-        self.U_tree = nn.Sequential( nn.Linear(args.hidden_size + args.cond_size, args.hidden_size), nn.ReLU() )
-        self.U_graph = nn.Sequential( nn.Linear(args.hidden_size + args.cond_size, args.hidden_size), nn.ReLU() )
+        self.U_tree = nn.Sequential(nn.Linear(args.hidden_size + args.cond_size, args.hidden_size), nn.ReLU())
+        self.U_graph = nn.Sequential(nn.Linear(args.hidden_size + args.cond_size, args.hidden_size), nn.ReLU())
 
     def translate(self, tensors, cond, num_decode, enum_root):
-        assert enum_root 
+        assert enum_root
         tensors = make_cuda(tensors)
         root_vecs, tree_vecs, graph_vecs = self.encode(tensors)
 
-        cond = cond.view(1,1,-1)
+        cond = cond.view(1, 1, -1)
         tree_cond = cond.expand(num_decode, tree_vecs.size(1), -1)
         graph_cond = cond.expand(num_decode, graph_vecs.size(1), -1)
 
@@ -152,9 +160,9 @@ class HierCondVGNN(HierVGNN):
 
         z_tree = torch.randn(num_decode, 1, self.latent_size).expand(-1, tree_vecs.size(1), -1).cuda()
         z_graph = torch.randn(num_decode, 1, self.latent_size).expand(-1, graph_vecs.size(1), -1).cuda()
-        z_tree_vecs = self.W_tree( torch.cat([tree_vecs, z_tree, tree_cond], dim=-1) )
-        z_graph_vecs = self.W_graph( torch.cat([graph_vecs, z_graph, graph_cond], dim=-1) )
-        return self.decoder.decode( (root_vecs, z_tree_vecs, z_graph_vecs) )
+        z_tree_vecs = self.W_tree(torch.cat([tree_vecs, z_tree, tree_cond], dim=-1))
+        z_graph_vecs = self.W_graph(torch.cat([graph_vecs, z_graph, graph_cond], dim=-1))
+        return self.decoder.decode((root_vecs, z_tree_vecs, z_graph_vecs))
 
     def forward(self, x_graphs, x_tensors, y_graphs, y_tensors, y_orders, cond, beta):
         x_tensors = make_cuda(x_tensors)
@@ -166,21 +174,21 @@ class HierCondVGNN(HierVGNN):
 
         diff_tree_vecs = y_tree_vecs.sum(dim=1) - x_tree_vecs.sum(dim=1)
         diff_graph_vecs = y_graph_vecs.sum(dim=1) - x_graph_vecs.sum(dim=1)
-        diff_tree_vecs = self.U_tree( torch.cat([diff_tree_vecs, cond], dim=-1) ) #combine condition for posterior
-        diff_graph_vecs = self.U_graph( torch.cat([diff_graph_vecs, cond], dim=-1) ) #combine condition for posterior
+        diff_tree_vecs = self.U_tree(torch.cat([diff_tree_vecs, cond], dim=-1))  # combine condition for posterior
+        diff_graph_vecs = self.U_graph(torch.cat([diff_graph_vecs, cond], dim=-1))  # combine condition for posterior
 
         diff_tree_vecs, tree_kl = self.rsample(diff_tree_vecs, self.T_mean, self.T_var)
         diff_graph_vecs, graph_kl = self.rsample(diff_graph_vecs, self.G_mean, self.G_var)
         kl_div = tree_kl + graph_kl
 
-        diff_tree_vecs = torch.cat([diff_tree_vecs, cond], dim=-1) #combine condition for posterior
-        diff_graph_vecs = torch.cat([diff_graph_vecs, cond], dim=-1) #combine condition for posterior
+        diff_tree_vecs = torch.cat([diff_tree_vecs, cond], dim=-1)  # combine condition for posterior
+        diff_graph_vecs = torch.cat([diff_graph_vecs, cond], dim=-1)  # combine condition for posterior
 
         diff_tree_vecs = diff_tree_vecs.unsqueeze(1).expand(-1, x_tree_vecs.size(1), -1)
         diff_graph_vecs = diff_graph_vecs.unsqueeze(1).expand(-1, x_graph_vecs.size(1), -1)
-        x_tree_vecs = self.W_tree( torch.cat([x_tree_vecs, diff_tree_vecs], dim=-1) )
-        x_graph_vecs = self.W_graph( torch.cat([x_graph_vecs, diff_graph_vecs], dim=-1) )
+        x_tree_vecs = self.W_tree(torch.cat([x_tree_vecs, diff_tree_vecs], dim=-1))
+        x_graph_vecs = self.W_graph(torch.cat([x_graph_vecs, diff_graph_vecs], dim=-1))
 
-        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors, y_orders)
+        loss, wacc, iacc, tacc, sacc = self.decoder((x_root_vecs, x_tree_vecs, x_graph_vecs), y_graphs, y_tensors,
+                                                    y_orders)
         return loss + beta * kl_div, kl_div.item(), wacc, iacc, tacc, sacc
-

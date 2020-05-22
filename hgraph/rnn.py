@@ -1,6 +1,9 @@
-import torch
 import torch.nn as nn
 from hgraph.nnutils import *
+import torch.nn as nn
+
+from hgraph.nnutils import *
+
 
 class GRU(nn.Module):
 

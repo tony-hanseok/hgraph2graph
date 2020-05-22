@@ -1,14 +1,16 @@
-import rdkit
+from rdkit import Chem, DataStructs
+import networkx as nx
+import rdkit.Chem.QED as QED
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
 from rdkit.Chem import Descriptors
-import rdkit.Chem.QED as QED
-import networkx as nx
-import props.sascorer as sascorer
+
 import props.drd2_scorer as drd2_scorer
+import props.sascorer as sascorer
+
 
 def similarity(a, b):
-    if a is None or b is None: 
+    if a is None or b is None:
         return 0.0
     amol = Chem.MolFromSmiles(a)
     bmol = Chem.MolFromSmiles(b)
@@ -17,7 +19,8 @@ def similarity(a, b):
 
     fp1 = AllChem.GetMorganFingerprintAsBitVect(amol, 2, nBits=2048, useChirality=False)
     fp2 = AllChem.GetMorganFingerprintAsBitVect(bmol, 2, nBits=2048, useChirality=False)
-    return DataStructs.TanimotoSimilarity(fp1, fp2) 
+    return DataStructs.TanimotoSimilarity(fp1, fp2)
+
 
 def drd2(s):
     if s is None: return 0.0
@@ -25,11 +28,13 @@ def drd2(s):
         return 0.0
     return drd2_scorer.get_score(s)
 
+
 def qed(s):
     if s is None: return 0.0
     mol = Chem.MolFromSmiles(s)
     if mol is None: return 0.0
     return QED.qed(mol)
+
 
 # Modified from https://github.com/bowenliu16/rl_graph_generation
 def penalized_logp(s):
@@ -64,9 +69,13 @@ def penalized_logp(s):
     normalized_cycle = (cycle_score - cycle_mean) / cycle_std
     return normalized_log_p + normalized_SA + normalized_cycle
 
+
 def smiles2D(s):
     mol = Chem.MolFromSmiles(s)
     return Chem.MolToSmiles(mol)
 
+
 if __name__ == "__main__":
-    print(round(penalized_logp('ClC1=CC=C2C(C=C(C(C)=O)C(C(NC3=CC(NC(NC4=CC(C5=C(C)C=CC=C5)=CC=C4)=O)=CC=C3)=O)=C2)=C1'), 2), 5.30)
+    print(
+        round(penalized_logp('ClC1=CC=C2C(C=C(C(C)=O)C(C(NC3=CC(NC(NC4=CC(C5=C(C)C=CC=C5)=CC=C4)=O)=CC=C3)=O)=C2)=C1'),
+              2), 5.30)

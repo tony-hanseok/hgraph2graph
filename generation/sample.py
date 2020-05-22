@@ -1,24 +1,23 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader
-
-import math, random, sys
-import numpy as np
 import argparse
+import random
+import os
+
+import rdkit
+from rdkit import Chem
+from rdkit.Chem.Draw import MolToFile
+import torch
 from tqdm import tqdm
 
-from poly_hgraph import *
-import rdkit
+from generation.poly_hgraph import *
 
-lg = rdkit.RDLogger.logger() 
+lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--vocab', required=True)
+parser.add_argument('--vocab_file', type=str)
 parser.add_argument('--atom_vocab', default=common_atom_vocab)
-parser.add_argument('--model', required=True)
+parser.add_argument('--model', type=str)
+parser.add_argument('--sampled_file', type=str)
 
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--nsample', type=int, default=10000)
@@ -35,10 +34,14 @@ parser.add_argument('--diterG', type=int, default=5)
 parser.add_argument('--dropout', type=float, default=0.0)
 
 args = parser.parse_args()
+args.sampled_file = '/nfs/romanoff/ext01/tony/hgraph2graph/data/chembl25/sampled.txt'
+args.vocab_file = '/nfs/romanoff/ext01/tony/hgraph2graph/data/chembl25/vocab_50.txt'
+args.model = '/nfs/romanoff/ext01/tony/hgraph2graph/ckpt/model.12'
 
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)] 
+
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab_file)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
-args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
+args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
 
 model = HierVAE(args).cuda()
 
@@ -48,9 +51,19 @@ model.eval()
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 
-with torch.no_grad():
-    for _ in tqdm(range(args.nsample // args.batch_size)):
-        smiles_list = model.sample(args.batch_size)
-        for _,smiles in enumerate(smiles_list):
-            print(smiles)
+abs_path = os.path.split(args.sampled_file)[0]
+sampled_dir = os.path.join(abs_path, 'sampled')
+if not os.path.exists(sampled_dir):
+    os.makedirs(sampled_dir)
 
+with open(args.sampled_file, 'w') as f:
+    with torch.no_grad():
+        for _ in tqdm(range(args.nsample // args.batch_size)):
+            smiles_list = model.sample(args.batch_size)
+            for _, smiles in enumerate(smiles_list):
+                print(smiles)
+                f.write(f'{smiles}\n')
+                try:
+                    MolToFile(Chem.MolFromSmiles(smiles), os.path.join(sampled_dir, f'{smiles}.png'))
+                except:
+                    continue

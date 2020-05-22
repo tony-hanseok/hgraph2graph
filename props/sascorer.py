@@ -17,14 +17,12 @@
 #
 
 
-from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
+import math
+import os.path as op
 import pickle
 
-import math
-from collections import defaultdict
-
-import os.path as op
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors
 
 _fscores = None
 
@@ -75,7 +73,7 @@ def calculateScore(m):
         if len(x) > 8:
             nMacrocycles += 1
 
-    sizePenalty = nAtoms**1.005 - nAtoms
+    sizePenalty = nAtoms ** 1.005 - nAtoms
     stereoPenalty = math.log10(nChiralCenters + 1)
     spiroPenalty = math.log10(nSpiro + 1)
     bridgePenalty = math.log10(nBridgeheads + 1)

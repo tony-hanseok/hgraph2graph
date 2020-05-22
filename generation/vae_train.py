@@ -1,24 +1,29 @@
+import argparse
+import math
+import os
+
+import sys
+
+import numpy as np
+import rdkit
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader
 
-import math, random, sys
-import numpy as np
-import argparse
+from generation.poly_hgraph import *
 
-from poly_hgraph import *
-import rdkit
+os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 
-lg = rdkit.RDLogger.logger() 
+lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--train', required=True)
-parser.add_argument('--vocab', required=True)
+parser.add_argument('--train_dir', type=str)
+parser.add_argument('--vocab_file', type=str)
 parser.add_argument('--atom_vocab', default=common_atom_vocab)
-parser.add_argument('--save_dir', required=True)
+parser.add_argument('--save_dir', type=str)
 parser.add_argument('--load_epoch', type=int, default=-1)
 
 parser.add_argument('--rnn_type', type=str, default='LSTM')
@@ -42,11 +47,16 @@ parser.add_argument('--print_iter', type=int, default=50)
 parser.add_argument('--save_iter', type=int, default=-1)
 
 args = parser.parse_args()
+args.load_epoch = 5
+args.train_dir = '/nfs/romanoff/ext01/tony/hgraph2graph/data/chembl25/train_preprocessed'
+args.vocab_file = '/nfs/romanoff/ext01/tony/hgraph2graph/data/chembl25/vocab_50.txt'
+args.save_dir = '/nfs/romanoff/ext01/tony/hgraph2graph/ckpt'
+
 print(args)
 
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)] 
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab_file)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
-args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
+args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
 
 model = HierVAE(args).cuda()
 
@@ -72,12 +82,21 @@ beta = args.beta
 meters = np.zeros(6)
 
 for epoch in range(args.load_epoch + 1, args.epoch):
-    dataset = DataFolder(args.train, args.batch_size)
+    dataset = DataFolder(args.train_dir, args.batch_size, shuffle=False)
 
     for batch in dataset:
         total_step += 1
+
+        # if total_step < 5092:
+        #     continue
+
+        # print(total_step)
+
         model.zero_grad()
-        loss, kl_div, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
+        try:
+            loss, kl_div, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
+        except:
+            continue
 
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
@@ -87,10 +106,15 @@ for epoch in range(args.load_epoch + 1, args.epoch):
 
         if total_step % args.print_iter == 0:
             meters /= args.print_iter
-            print("[%d] Beta: %.3f, KL: %.2f, loss: %.3f, Word: %.2f, %.2f, Topo: %.2f, Assm: %.2f, PNorm: %.2f, GNorm: %.2f" % (total_step, beta, meters[0], meters[1], meters[2], meters[3], meters[4], meters[5], param_norm(model), grad_norm(model)))
+            print(
+                "[%d] Beta: %.3f, KL: %.2f, loss: %.3f, Word: %.2f, %.2f, "
+                "Topo: %.2f, Assm: %.2f, PNorm: %.2f, GNorm: %.2f" % (
+                    total_step, beta, meters[0], meters[1], meters[2], meters[3], meters[4], meters[5],
+                    param_norm(model),
+                    grad_norm(model)))
             sys.stdout.flush()
             meters *= 0
-        
+
         if args.save_iter >= 0 and total_step % args.save_iter == 0:
             n_iter = total_step // args.save_iter - 1
             torch.save(model.state_dict(), args.save_dir + "/model." + str(n_iter))

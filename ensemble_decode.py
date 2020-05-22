@@ -1,18 +1,14 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader
-
-import rdkit
-import math, random, sys, os
-import numpy as np
 import argparse
-
-from hgraph import *
+import os
 from collections import defaultdict
 
-lg = rdkit.RDLogger.logger() 
+import rdkit
+import torch
+from torch.utils.data import DataLoader
+
+from hgraph import *
+
+lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
 parser = argparse.ArgumentParser()
@@ -41,8 +37,8 @@ args = parser.parse_args()
 args.enum_root = True
 
 args.test = [line.strip("\r\n ") for line in open(args.test)]
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)] 
-args.vocab = PairVocab(vocab) 
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
+args.vocab = PairVocab(vocab)
 
 model = HierVGNN(args).cuda()
 
@@ -61,19 +57,18 @@ for fn in os.listdir(args.model_dir):
     model.eval()
 
     dataset = MolEnumRootDataset(args.test, args.vocab, args.atom_vocab)
-    loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x:x[0])
+    loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x: x[0])
 
     with torch.no_grad():
-        for i,batch in enumerate(loader):
+        for i, batch in enumerate(loader):
             x = args.test[i]
             ylist = model.translate(batch[1], args.num_decode, args.enum_root)
-            outcomes = [restore_stereo(x,y) for y in set(ylist)]
-            outcomes = [(x,y,sim) for x,y,sim in outcomes if sim >= args.min_similarity]
+            outcomes = [restore_stereo(x, y) for y in set(ylist)]
+            outcomes = [(x, y, sim) for x, y, sim in outcomes if sim >= args.min_similarity]
             all_outcomes[x].extend(outcomes)
 
 print('lead compound smiles,new compound smiles,similarity')
 for x, outcomes in all_outcomes.items():
     outcomes = list(set(outcomes))
-    for x,y,sim in outcomes:
+    for x, y, sim in outcomes:
         print('%s,%s,%.4f' % (x, y, sim))
-

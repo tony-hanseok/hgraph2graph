@@ -1,8 +1,9 @@
 import sys
+
 from props import *
 
 for line in sys.stdin:
-    x,y = line.split()[:2]
+    x, y = line.split()[:2]
     if y == "None": y = None
     sim2D = similarity(x, y)
     try:

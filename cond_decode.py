@@ -1,17 +1,12 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader
-
-import math, random, sys
-import numpy as np
 import argparse
 
-from hgraph import *
 import rdkit
+import torch
+from torch.utils.data import DataLoader
 
-lg = rdkit.RDLogger.logger() 
+from hgraph import *
+
+lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
 parser = argparse.ArgumentParser()
@@ -39,7 +34,7 @@ parser.add_argument('--dropout', type=float, default=0.0)
 args = parser.parse_args()
 
 args.test = [line.strip("\r\n ") for line in open(args.test)]
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)] 
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 args.vocab = PairVocab(vocab)
 
 assert args.cond in ['1,0,1,0', '0,1,1,0', '1,0,0,1']
@@ -52,13 +47,12 @@ model.load_state_dict(torch.load(args.model))
 model.eval()
 
 dataset = MolEnumRootDataset(args.test, args.vocab, args.atom_vocab)
-loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x:x[0])
+loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x: x[0])
 
 torch.manual_seed(args.seed)
 with torch.no_grad():
-    for i,batch in enumerate(loader):
+    for i, batch in enumerate(loader):
         new_mols = model.translate(batch[1], cond, args.num_decode, args.enum_root)
         smiles = args.test[i]
-        for k in xrange(args.num_decode):
-            print smiles, new_mols[k]
-
+        for k in range(args.num_decode):
+            print(smiles, new_mols[k])
